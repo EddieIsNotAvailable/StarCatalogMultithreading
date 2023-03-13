@@ -32,11 +32,15 @@
 #include "star.h"
 #include "float.h"
 
-#define NUM_STARS 50000 
+#define NUM_STARS 30000 
 #define MAX_LINE 1024
 #define DELIMITER " \t\n"
 
 struct Star star_array[ NUM_STARS ];
+uint8_t   (*distance_calculated)[NUM_STARS];
+
+double  min  = FLT_MAX;
+double  max  = FLT_MIN;
 
 
 void showHelp()
@@ -53,19 +57,38 @@ void showHelp()
 // average angular separation between any two stars 
 float determineAverageAngularDistance( struct Star arr[] )
 {
-    double total = 0;
+    double mean = 0;
 
-    int i, j;
-    for (i = 0; i < NUM_STARS - 1; i++)
+    uint32_t i, j;
+    uint64_t count = 0;
+
+
+    for (i = 0; i < NUM_STARS; i++)
     {
-      for (j = 0; j < NUM_STARS - i - 1; j++)
+      for (j = 0; j < NUM_STARS; j++)
       {
-        double distance = calculateAngularDistance( arr[i].RightAscension, arr[j].Declination,
-                                                   arr[j].RightAscension, arr[j].Declination ) ;
-        total += distance;
+        if( i!=j && distance_calculated[i][j] == 0 )
+        {
+          double distance = calculateAngularDistance( arr[i].RightAscension, arr[j].Declination,
+                                                      arr[j].RightAscension, arr[j].Declination ) ;
+          distance_calculated[i][j] = 1;
+          distance_calculated[j][i] = 1;
+          count++;
+
+          if( min > distance )
+          {
+            min = distance;
+          }
+
+          if( max < distance )
+          {
+            max = distance;
+          }
+          mean = mean + (distance-mean)/count;
+        }
       }
     }
-    return total / NUM_STARS;
+    return mean;
 }
 
 
@@ -76,6 +99,27 @@ int main( int argc, char * argv[] )
   uint32_t star_count = 0;
 
   uint32_t n;
+
+  distance_calculated = malloc(sizeof(uint8_t[NUM_STARS][NUM_STARS]));
+
+  if( distance_calculated == NULL )
+  {
+    uint64_t num_stars = NUM_STARS;
+    uint64_t size = num_stars * num_stars * sizeof(uint8_t);
+    printf("Could not allocate %ld bytes\n", size);
+    exit( EXIT_FAILURE );
+  }
+
+  int i, j;
+  // default every thing to 0 so we calculated the distance.
+  // This is really inefficient and should be replace by a memset
+  for (i = 0; i < NUM_STARS; i++)
+  {
+    for (j = 0; j < NUM_STARS; j++)
+    {
+      distance_calculated[i][j] = 0;
+    }
+  }
 
   for( n = 1; n < argc; n++ )          
   {
@@ -97,7 +141,7 @@ int main( int argc, char * argv[] )
   char line[MAX_LINE];
   while (fgets(line, 1024, fp))
   {
-    uint8_t column = 0;
+    uint32_t column = 0;
 
     char* tok;
     for (tok = strtok(line, " ");
@@ -132,6 +176,8 @@ int main( int argc, char * argv[] )
   // Find the average angular distance in the most inefficient way possible
   double distance =  determineAverageAngularDistance( star_array );
   printf("Average distance found is %lf\n", distance );
+  printf("Minimum distance found is %lf\n", min );
+  printf("Maximum distance found is %lf\n", max );
 
   return 0;
 }
