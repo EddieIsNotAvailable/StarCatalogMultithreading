@@ -182,12 +182,10 @@ int main( int argc, char * argv[] )
 	double dist = runThreads();
 
 	clock_gettime(CLOCK_MONOTONIC, &end);
-	double elapsed = (end.tv_sec - start.tv_sec);
-	elapsed += (end.tv_nsec - start.tv_nsec) / 1000000000.0;
 
 	printf("Average distance found is %f\n", dist );
 	printf("Minimum distance found is %lf\n", min_global );
 	printf("Maximum distance found is %lf\n", max_global );
-	printf("Seconds taken: %lf\n",elapsed);
+	printf("Seconds taken: %lf\n", (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0);
 	return 0;
 }
