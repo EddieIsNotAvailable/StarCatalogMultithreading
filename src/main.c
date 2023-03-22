@@ -33,210 +33,161 @@
 #include "float.h"
 #include <pthread.h>
 
+
 #define NUM_STARS 30000 
 #define MAX_LINE 1024
-#define DELIMITER " \t\n"
 
 struct Star star_array[ NUM_STARS ];
 uint8_t   (*distance_calculated)[NUM_STARS];
 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+double  min_global  = FLT_MAX;
+double  max_global  = FLT_MIN;
 
-double min_global = FLT_MAX;
-double max_global = FLT_MIN;
+int thread_ct=1;
+int load = NUM_STARS;
 
-int thread_ct=4;
-
-typedef struct {
+typedef struct
+{
   uint32_t start;
   uint32_t end;
   uint64_t count;
-  double mean;
+  double dist_sum;
   double min;
   double max;
 } ThreadArg;
 
-void * work(void * arg) {
-  ThreadArg *this = (ThreadArg*) arg;
-  uint32_t i,j;
-  int end = this->end;
-  int start = this->start;
-  double sum=0;
-  double test;
-  for (i = start; i < end; i++)
-  {
-    for (j = start; j < end; j++)
-    {
-      pthread_mutex_lock(&mutex);
-      int a = distance_calculated[i][j];
-      pthread_mutex_unlock(&mutex);
+void * determineAverageAngularDistance( void * arg )
+{
+	ThreadArg *this = (ThreadArg*) arg;
+	uint32_t i, j, end = this->end;
+	double distance,count=0,dist_sum=0;
 
-      if( i!=j && a == 0 )
-      {
-        double distance = calculateAngularDistance( star_array[i].RightAscension, star_array[j].Declination,
-                                                    star_array[j].RightAscension, star_array[j].Declination ) ;
-        pthread_mutex_lock(&mutex);
-        distance_calculated[i][j] = 1;
-        distance_calculated[j][i] = 1;
-        pthread_mutex_unlock(&mutex);
-        this->count++;
+	for (i = this->start; i < end; i++)
+	{
+	  for (j = i+1; j < NUM_STARS; j++)
+	  {
+		if( i!=j && distance_calculated[i][j] == 0 )
+		{
+			distance = calculateAngularDistance( star_array[i].RightAscension, star_array[i].Declination,
+														star_array[j].RightAscension, star_array[j].Declination ) ;
+			
+			distance_calculated[i][j] = 1;
+			distance_calculated[j][i] = 1;
+			
+			count++;
+			dist_sum += distance;
 
-        if( this->min > distance )
-        {
-          this->min = distance;
-        }
-
-        if( this->max < distance )
-        {
-          this->max = distance;
-        }
-        //this->mean = this->mean + (distance - this->mean)/this->count;
-        //this->mean += distance;
-        //sum += distance;
-
-        test = this->mean + (distance - this->mean)/this->count;
-
-        if(isnan(test)) {
-          printf("Thread w start %d at i: %d, j: %d Resulted in nan -  mean: %f dist: %f count: %lu\n",this->start, i,j,this->mean,distance,this->count);
-          printf("Array info there: i.ra= %f, i.des = %f, j.ra = %f, j.d = %f\n",star_array[i].RightAscension,star_array[i].Declination,star_array[j].RightAscension,star_array[j].Declination);
-        }
-        else this->mean = test;
-        
-
-      }
-    }
-    
-    
-  }
-  //*(ThreadArg*) arg = *this;
-  //pthread_exit(arg);
-  pthread_exit(NULL);
+			if( this->min > distance ) this->min = distance;
+			if( this->max < distance ) this->max = distance;
+			
+		}
+	  }
+	}
+	this->dist_sum = dist_sum;
+	this->count = count;
+	pthread_exit(NULL);
 }
 
+double runThreads()
+{
+	pthread_t threads[thread_ct];
+	ThreadArg *args[thread_ct];
+	uint32_t start=0;
+	int i;
+	for(i=0; i< thread_ct; i++)
+	{
+		args[i] = malloc(sizeof(ThreadArg));
+		start = i * load;
+		args[i]->start = start;
+		args[i]->end = start + load;
+		args[i]->min = FLT_MAX;
+		args[i]->max = FLT_MIN;
+		pthread_create(&threads[i], NULL, determineAverageAngularDistance, (void *) args[i]);
+	}
+	
+	double dist_sum=0,count_sum=0;
+	for(i=0;i<thread_ct;i++)
+	{
+		pthread_join(threads[i], NULL);
+		if (args[i]->min<min_global) min_global = args[i]->min;
+		if (args[i]->max>max_global) max_global = args[i]->max;
+		count_sum += args[i]->count;
+		dist_sum += args[i]->dist_sum;
+		free(args[i]);
+	}
+	free(distance_calculated);
 
-double runThreads() {
-  pthread_t threads[thread_ct];
-  ThreadArg *args[thread_ct];
-  int i;
-
-  int load = NUM_STARS/thread_ct;
-  int start;
-
-
-  for(i=0; i<thread_ct; i++)
-  {
-    start = load * i;
-    args[i] = malloc(sizeof(ThreadArg));
-    args[i]->count=0;
-    args[i]->start = start;
-    args[i]->end = start + load;
-    args[i]->mean = 0;
-    args[i]->min = FLT_MAX;
-    args[i]->max = FLT_MIN;
-    
-    if(pthread_create(&threads[i], NULL, &work, (void *) args[i]) != 0)
-      perror("Thread creation failed");
-  }
-
-  uint64_t count_sum=0;
-  double mean_sum=0,min,max;
-  for(i=0; i<thread_ct; i++)
-  {
-    pthread_join(threads[i], NULL);
-    //count_sum += args[i]->count;
-    min = args[i]->min;
-    max = args[i]->max;
-    if(min_global>min) min_global = min;
-    if(max_global<max) max_global = max;
-
-    printf("Thread[%d] - Count: %lu Start: %d End: %d Mean: %f Min: %f Max: %f\n",
-    i, args[i]->count, args[i]->start, args[i]->end, args[i]->mean, min, max);
-    //mean_sum = mean_sum + (args[i]->mean - mean_sum) / count_sum;
-    mean_sum += args[i]->mean;
-  }
-  printf("Mean Sum: %f\n",mean_sum);
-
-
-  //return mean_sum/count_sum;
-  return mean_sum/thread_ct;
+	return dist_sum / count_sum;
 }
 
 
 int main( int argc, char * argv[] )
 {
-  struct timespec start, finish;
-  clock_gettime(CLOCK_MONOTONIC, &start);
+	struct timespec start, end;
+	clock_gettime(CLOCK_MONOTONIC, &start);
+	FILE *fp;
+	uint32_t star_count=0,n,column;
 
-  FILE *fp;
-  uint32_t star_count = 0;
+	distance_calculated = malloc(sizeof(uint8_t[NUM_STARS][NUM_STARS]));
+	memset(distance_calculated,0,sizeof(uint8_t[NUM_STARS][NUM_STARS]));
 
-  distance_calculated = malloc(sizeof(uint8_t[NUM_STARS][NUM_STARS]));
+	for( n = 1; n < argc; n++ )          
+	{
+		if( strcmp(argv[n], "-t")==0)
+		{
+			thread_ct = atoi(argv[n+1]);
+			load = load/thread_ct;
+		}
+	}
 
-  if( distance_calculated == NULL )
-  {
-    uint64_t num_stars = NUM_STARS;
-    uint64_t size = num_stars * num_stars * sizeof(uint8_t);
-    printf("Could not allocate %ld bytes\n", size);
-    exit( EXIT_FAILURE );
-  }
+	fp = fopen( "data/tycho-trimmed.csv", "r" );
 
-  memset(distance_calculated,0,sizeof(uint8_t)*NUM_STARS*NUM_STARS);
+	if( fp == NULL )
+	{
+		printf("ERROR: Unable to open the file data/tycho-trimmed.csv\n");
+		exit(1);
+	}
 
-  fp = fopen( "data/tycho-trimmed.csv", "r" );
+	char line[MAX_LINE];
+	while (fgets(line, 1024, fp))
+	{
+		column=0;
+		char* tok;
+		for (tok = strtok(line, " ");
+				tok && *tok;
+				tok = strtok(NULL, " "))
+		{
+			switch( column )
+			{
+				case 0:
+					star_array[star_count].ID = atoi(tok);
+					break;
+				case 1:
+					star_array[star_count].RightAscension = atof(tok);
+					break;
+				case 2:
+					star_array[star_count].Declination = atof(tok);
+					break;
+				default: 
+					printf("ERROR: line %d had more than 3 columns\n", star_count );
+					exit(1);
+					break;
+			}
+			column++;
+		}
+		star_count++;
+  	}
+	printf("%d records read\n", star_count );
 
-  if( fp == NULL )
-  {
-    printf("ERROR: Unable to open the file data/tycho-trimmed.csv\n");
-    exit(1);
-  }
+	double dist = runThreads();
 
-  char line[MAX_LINE];
-  while (fgets(line, 1024, fp))
-  {
-    uint32_t column = 0;
+	clock_gettime(CLOCK_MONOTONIC, &end);
+	double elapsed = (end.tv_sec - start.tv_sec);
+	elapsed += (end.tv_nsec - start.tv_nsec) / 1000000000.0;
 
-    char* tok;
-    for (tok = strtok(line, " ");
-            tok && *tok;
-            tok = strtok(NULL, " "))
-    {
-       switch( column )
-       {
-          case 0:
-              star_array[star_count].ID = atoi(tok);
-              break;
-       
-          case 1:
-              star_array[star_count].RightAscension = atof(tok);
-              break;
-       
-          case 2:
-              star_array[star_count].Declination = atof(tok);
-              break;
-
-          default: 
-             printf("ERROR: line %d had more than 3 columns\n", star_count );
-             exit(1);
-             break;
-       }
-       column++;
-    }
-    star_count++;
-  }
-  printf("%d records read\n", star_count );
-
-  printf("Threads: %d\n",thread_ct);
-  
-  // Find the average angular distance in the most inefficient way possible
-  double distance =  runThreads();
-  pthread_mutex_destroy(&mutex);
-  printf("Average distance found is %lf\n", distance );
-  printf("Minimum distance found is %lf\n", min_global );
-  printf("Maximum distance found is %lf\n", max_global );
-  clock_gettime(CLOCK_MONOTONIC, &finish);
- 
-  double elapsed = (finish.tv_sec - start.tv_sec);
-  elapsed += (finish.tv_nsec - start.tv_nsec) / 1000000000.0;
-  printf("Seconds taken: %f\n",elapsed);
-  return 0;
+	printf("Average distance found is %f\n", dist );
+	printf("Minimum distance found is %lf\n", min_global );
+	printf("Maximum distance found is %lf\n", max_global );
+	printf("Seconds taken: %lf\n",elapsed);
+	return 0;
 }
