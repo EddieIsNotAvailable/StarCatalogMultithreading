@@ -40,8 +40,8 @@
 struct Star star_array[ NUM_STARS ];
 uint8_t   (*distance_calculated)[NUM_STARS];
 
-double  min_global  = FLT_MAX;
-double  max_global  = FLT_MIN;
+double min_global = FLT_MAX;
+double max_global = FLT_MIN;
 
 int thread_ct=1;
 int load = NUM_STARS;
@@ -66,21 +66,21 @@ void * determineAverageAngularDistance( void * arg )
 	{
 	  for (j = i+1; j < NUM_STARS; j++)
 	  {
-		if( i!=j && distance_calculated[i][j] == 0 )
-		{
-			distance = calculateAngularDistance( star_array[i].RightAscension, star_array[i].Declination,
-														star_array[j].RightAscension, star_array[j].Declination ) ;
-			
-			distance_calculated[i][j] = 1;
-			distance_calculated[j][i] = 1;
-			
-			count++;
-			dist_sum += distance;
+      if( i!=j && distance_calculated[i][j] == 0 )
+      {
+        distance = calculateAngularDistance( star_array[i].RightAscension, star_array[i].Declination,
+                              star_array[j].RightAscension, star_array[j].Declination ) ;
+        
+        distance_calculated[i][j] = 1;
+        distance_calculated[j][i] = 1;
+        
+        count++;
+        dist_sum += distance;
 
-			if( this->min > distance ) this->min = distance;
-			if( this->max < distance ) this->max = distance;
-			
-		}
+        if( this->min > distance ) this->min = distance;
+        if( this->max < distance ) this->max = distance;
+        
+      }
 	  }
 	}
 	this->dist_sum = dist_sum;
@@ -94,7 +94,7 @@ double runThreads()
 	ThreadArg *args[thread_ct];
 	uint32_t start=0;
 	int i;
-	for(i=0; i< thread_ct; i++)
+	for(i=0; i < thread_ct; i++)
 	{
 		args[i] = malloc(sizeof(ThreadArg));
 		start = i * load;
@@ -106,7 +106,7 @@ double runThreads()
 	}
 	
 	double dist_sum=0,count_sum=0;
-	for(i=0;i<thread_ct;i++)
+	for(i=0; i < thread_ct; i++)
 	{
 		pthread_join(threads[i], NULL);
 		if (args[i]->min<min_global) min_global = args[i]->min;
