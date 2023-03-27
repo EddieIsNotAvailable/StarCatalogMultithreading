@@ -38,13 +38,12 @@
 #define MAX_LINE 1024
 
 struct Star star_array[ NUM_STARS ];
-uint8_t   (*distance_calculated)[NUM_STARS];
 
 double min_global = FLT_MAX;
 double max_global = FLT_MIN;
 
-int thread_ct=1;
-int load = NUM_STARS;
+uint32_t thread_ct = 1;
+uint32_t load = NUM_STARS;
 
 typedef struct
 {
@@ -66,21 +65,14 @@ void * determineAverageAngularDistance( void * arg )
 	{
 	  for (j = i+1; j < NUM_STARS; j++)
 	  {
-      if( i!=j && distance_calculated[i][j] == 0 )
-      {
         distance = calculateAngularDistance( star_array[i].RightAscension, star_array[i].Declination,
                               star_array[j].RightAscension, star_array[j].Declination ) ;
-        
-        distance_calculated[i][j] = 1;
-        distance_calculated[j][i] = 1;
-        
+
         count++;
         dist_sum += distance;
 
         if( this->min > distance ) this->min = distance;
         if( this->max < distance ) this->max = distance;
-        
-      }
 	  }
 	}
 	this->dist_sum = dist_sum;
@@ -92,9 +84,9 @@ double runThreads()
 {
 	pthread_t threads[thread_ct];
 	ThreadArg *args[thread_ct];
-	uint32_t start=0;
-	int i;
-	for(i=0; i < thread_ct; i++)
+	uint32_t start=0,i;
+
+	for( i = 0; i < thread_ct; i++ )
 	{
 		args[i] = malloc(sizeof(ThreadArg));
 		start = i * load;
@@ -106,7 +98,7 @@ double runThreads()
 	}
 	
 	double dist_sum=0,count_sum=0;
-	for(i=0; i < thread_ct; i++)
+	for( i = 0; i < thread_ct; i++ )
 	{
 		pthread_join(threads[i], NULL);
 		if (args[i]->min<min_global) min_global = args[i]->min;
@@ -115,7 +107,6 @@ double runThreads()
 		dist_sum += args[i]->dist_sum;
 		free(args[i]);
 	}
-	free(distance_calculated);
 
 	return dist_sum / count_sum;
 }
@@ -128,10 +119,7 @@ int main( int argc, char * argv[] )
 	FILE *fp;
 	uint32_t star_count=0,n,column;
 
-	distance_calculated = malloc(sizeof(uint8_t[NUM_STARS][NUM_STARS]));
-	memset(distance_calculated,0,sizeof(uint8_t[NUM_STARS][NUM_STARS]));
-
-	for( n = 1; n < argc; n++ )          
+	for( n = 1; n < argc; n++ )
 	{
 		if( strcmp(argv[n], "-t")==0)
 		{
