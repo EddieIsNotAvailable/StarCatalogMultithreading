@@ -176,7 +176,7 @@ int main( int argc, char * argv[] )
 			column++;
 		}
 		star_count++;
-  	}
+  }
 	printf("%d records read\n", star_count );
 
 	double dist = runThreads();
