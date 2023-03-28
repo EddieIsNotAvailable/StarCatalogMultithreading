@@ -61,9 +61,9 @@ void * determineAverageAngularDistance( void * arg )
 	uint32_t i, j, end = this->end;
 	double distance,count=0,dist_sum=0;
 
-	for (i = this->start; i < end; i++)
+	for ( i = this->start; i < end; i++ )
 	{
-	  for (j = i+1; j < NUM_STARS; j++)
+	  for ( j = i+1; j < NUM_STARS; j++ )
 	  {
         distance = calculateAngularDistance( star_array[i].RightAscension, star_array[i].Declination,
                               star_array[j].RightAscension, star_array[j].Declination ) ;
